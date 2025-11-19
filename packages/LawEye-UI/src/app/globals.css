@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+@theme inline {
+  /* Bronze light palette (from bytebot) */
+  --color-bytebot-bronze-light-1: rgba(251, 249, 249, 1);
+  --color-bytebot-bronze-light-2: rgba(246, 244, 244, 1);
+  --color-bytebot-bronze-light-3: rgba(241, 239, 238, 1);
+  --color-bytebot-bronze-light-4: rgba(236, 233, 232, 1);
+  --color-bytebot-bronze-light-5: rgba(230, 225, 224, 1);
+  --color-bytebot-bronze-light-6: rgba(224, 218, 217, 1);
+  --color-bytebot-bronze-light-7: rgba(218, 212, 210, 1);
+  --color-bytebot-bronze-light-8: rgba(209, 201, 199, 1);
+  --color-bytebot-bronze-light-9: rgba(152, 141, 139, 1);
+  --color-bytebot-bronze-light-10: rgba(141, 130, 128, 1);
+  --color-bytebot-bronze-light-11: rgba(106, 99, 98, 1);
+  --color-bytebot-bronze-light-12: rgba(45, 42, 42, 1);
+
+  /* Blue accent */
+  --color-blue-50: rgba(239, 246, 255, 1);
+  --color-blue-500: rgba(59, 130, 246, 1);
+  --color-blue-600: rgba(37, 99, 235, 1);
+  --color-blue-700: rgba(29, 78, 216, 1);
+}
+
+@layer base {
+  * {
+    @apply border-bytebot-bronze-light-7;
+  }
+  
+  body {
+    @apply bg-bytebot-bronze-light-2 text-bytebot-bronze-light-12 antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+.hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+

@@ -1,0 +1,59 @@
+name: bytebot-desktop-only
+
+services:
+  bytebot-desktop:
+    # Build from source
+    build:
+      context: ../packages/
+      dockerfile: bytebotd/Dockerfile
+    # Use pre-built image
+    # image: ghcr.io/bytebot-ai/bytebot-desktop:edge
+    shm_size: "2g"
+    container_name: bytebot-desktop
+    restart: unless-stopped
+    hostname: computer
+    privileged: true
+    ports:
+      - "9990:9990" # bytebotd service & noVNC
+    environment:
+      - DISPLAY=:0
+    networks:
+      - laweye-network
+
+  laweye:
+    build:
+      context: ../packages/
+      dockerfile: LawEye/Dockerfile
+    container_name: laweye
+    restart: unless-stopped
+    ports:
+      - "9992:9992" # LawEye backend API
+    environment:
+      - BYTEBOT_DESKTOP_BASE_URL=http://bytebot-desktop:9990
+      - LM_STUDIO_BASE_URL=${LM_STUDIO_BASE_URL:-http://host.docker.internal:1234/v1}
+      - MODEL_ORCHESTRATOR=${MODEL_ORCHESTRATOR:-magistral-small-2509}
+      - MODEL_POSITION=${MODEL_POSITION:-qwen2.5-vl:32b}
+    depends_on:
+      - bytebot-desktop
+    networks:
+      - laweye-network
+
+  laweye-ui:
+    build:
+      context: ../packages/
+      dockerfile: LawEye-UI/Dockerfile
+    container_name: laweye-ui
+    restart: unless-stopped
+    ports:
+      - "9993:9993" # LawEye UI
+    environment:
+      - LAWEYE_API_URL=http://laweye:9992
+      - NODE_ENV=production
+    depends_on:
+      - laweye
+    networks:
+      - laweye-network
+
+networks:
+  laweye-network:
+    driver: bridge
