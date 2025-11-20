@@ -30,12 +30,27 @@ export function useWebSocket({ taskId, onTaskEvent }: UseWebSocketProps) {
   const getWsBaseUrl = useCallback(() => {
     if (typeof window === 'undefined') return 'http://localhost:9992';
     
-    if (window.location.hostname === 'localhost') {
+    // In production or Docker, use same origin (will be proxied by server.ts)
+    // In development on localhost, use direct URL
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
       return process.env.NEXT_PUBLIC_LAWEYE_WS_URL || 'http://localhost:9992';
     }
     
-    // In production, use same origin (will be proxied by server.ts)
+    // In production/Docker, use same origin with /api prefix
     return window.location.origin;
+  }, []);
+
+  const getSocketPath = useCallback(() => {
+    if (typeof window === 'undefined') return '/socket.io';
+    
+    // If we're using the proxy (production/Docker), use /api/socket.io
+    const hostname = window.location.hostname;
+    if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+      return '/api/socket.io';
+    }
+    
+    // Direct connection in development
+    return '/socket.io';
   }, []);
 
   const connect = useCallback(() => {
@@ -43,14 +58,36 @@ export function useWebSocket({ taskId, onTaskEvent }: UseWebSocketProps) {
       return socketRef.current;
     }
 
+    // Disconnect existing socket if any
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+
     const wsUrl = getWsBaseUrl();
+    const socketPath = getSocketPath();
+    
+    console.log(`Connecting to WebSocket: ${wsUrl}${socketPath}`);
+    
     const socket = io(wsUrl, {
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'], // Allow polling as fallback
       autoConnect: true,
       reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      path: typeof window !== 'undefined' && window.location.hostname !== 'localhost' ? '/api/socket.io' : '/socket.io',
+      reconnectionAttempts: 3, // Reduced from 5
+      reconnectionDelay: 2000, // Increased from 1000
+      reconnectionDelayMax: 10000, // Increased from 5000
+      timeout: 20000, // Connection timeout
+      path: socketPath,
+    });
+
+    // Add error handler to prevent infinite reconnection loops
+    socket.on('connect_error', (error) => {
+      console.error('WebSocket connection error:', error.message);
+      // Stop reconnecting after multiple failures
+      if (socket.recovered === false) {
+        console.error('WebSocket failed to connect. Stopping reconnection attempts.');
+        socket.disconnect();
+      }
     });
 
     socket.on('connect', () => {
@@ -71,7 +108,7 @@ export function useWebSocket({ taskId, onTaskEvent }: UseWebSocketProps) {
 
     socketRef.current = socket;
     return socket;
-  }, [onTaskEvent, getWsBaseUrl]);
+  }, [onTaskEvent, getWsBaseUrl, getSocketPath]);
 
   const joinTask = useCallback(
     (id: string) => {
@@ -90,31 +127,48 @@ export function useWebSocket({ taskId, onTaskEvent }: UseWebSocketProps) {
     }
   }, [taskId]);
 
-  // Connect on mount
+  // Connect on mount (only once)
   useEffect(() => {
-    connect();
+    const socket = connect();
 
     return () => {
       if (socketRef.current) {
-        leaveTask();
         socketRef.current.disconnect();
         socketRef.current = null;
+        setIsConnected(false);
       }
     };
-  }, [connect, leaveTask]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
 
   // Join/leave task room when taskId changes
   useEffect(() => {
-    if (taskId && socketRef.current?.connected) {
-      joinTask(taskId);
-    } else if (!taskId) {
-      leaveTask();
+    if (!socketRef.current) {
+      return;
+    }
+
+    const handleConnect = () => {
+      if (taskId) {
+        joinTask(taskId);
+      }
+    };
+
+    if (socketRef.current.connected) {
+      // Already connected, join immediately
+      if (taskId) {
+        joinTask(taskId);
+      }
+    } else {
+      // Wait for connection
+      socketRef.current.once('connect', handleConnect);
     }
 
     return () => {
-      if (taskId) {
+      if (taskId && socketRef.current?.connected) {
         leaveTask();
       }
+      // Remove the connect listener if it hasn't fired yet
+      socketRef.current?.off('connect', handleConnect);
     };
   }, [taskId, joinTask, leaveTask]);
 

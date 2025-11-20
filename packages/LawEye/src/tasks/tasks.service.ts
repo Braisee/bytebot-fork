@@ -92,129 +92,172 @@ export class TasksService {
     this.logger.log(`Starting task ${taskId}: ${task.description}`);
     this.gatewayService.emitTaskStarted(taskId, task);
 
-    try {
-      const actionHistory: Array<{ action: string; result?: string }> = [];
-      let iterationCount = 0;
-      const maxIterations = 100; // Safety limit
+      try {
+        const actionHistory: Array<{ action: string; result?: string }> = [];
+        let iterationCount = 0;
+        const maxIterations = 100; // Safety limit
+        let consecutiveErrors = 0;
+        const maxConsecutiveErrors = 5;
 
-      while (task.status === 'running' && iterationCount < maxIterations) {
-        iterationCount++;
+        while (task.status === 'running' && iterationCount < maxIterations) {
+          iterationCount++;
 
-        this.logger.debug(`Task ${taskId} iteration ${iterationCount}`);
+          this.logger.log(
+            `Task ${taskId} - Iteration ${iterationCount}/${maxIterations}`,
+          );
 
-        // Take screenshot
-        const screenshot = await this.desktopService.screenshot();
-        this.gatewayService.emitScreenshotTaken(taskId, screenshot);
+          try {
+            // Take screenshot
+            this.logger.debug(`Taking screenshot...`);
+            const screenshot = await this.desktopService.screenshot();
+            this.gatewayService.emitScreenshotTaken(taskId, screenshot);
+            this.logger.debug(`Screenshot taken (${screenshot.length} chars)`);
 
-        // Get next action from orchestrator
-        const orchestratorResponse = await this.llmService.getNextAction(
-          screenshot,
-          task.description,
-          actionHistory,
-        );
+            // Get next action from orchestrator
+            this.logger.debug(`Getting next action from orchestrator...`);
+            const orchestratorResponse = await this.llmService.getNextAction(
+              screenshot,
+              task.description,
+              actionHistory,
+            );
 
-        if (orchestratorResponse.thinking) {
-          this.gatewayService.emitOrchestratorThinking(
-            taskId,
-            orchestratorResponse.thinking,
+            if (orchestratorResponse.thinking) {
+              this.logger.debug(
+                `Orchestrator thinking: ${orchestratorResponse.thinking.substring(0, 100)}...`,
+              );
+              this.gatewayService.emitOrchestratorThinking(
+                taskId,
+                orchestratorResponse.thinking,
+              );
+            }
+
+            this.logger.log(
+              `Orchestrator decided: action=${orchestratorResponse.action}${
+                orchestratorResponse.description
+                  ? `, description="${orchestratorResponse.description}"`
+                  : ''
+              }${orchestratorResponse.text ? `, text="${orchestratorResponse.text.substring(0, 50)}..."` : ''}`,
+            );
+
+            // Reset error counter on successful action
+            consecutiveErrors = 0;
+
+            // Handle different actions
+            switch (orchestratorResponse.action) {
+              case 'done':
+                task.status = 'completed';
+                task.completedAt = new Date();
+                this.logger.log(`Task ${taskId} completed`);
+                this.gatewayService.emitTaskCompleted(taskId);
+                this.currentTaskId = null;
+                return;
+
+              case 'click':
+                if (!orchestratorResponse.description) {
+                  throw new Error('Click action requires a description');
+                }
+
+                // Find position using Position LLM
+                this.gatewayService.emitPositionRequest(
+                  taskId,
+                  orchestratorResponse.description,
+                );
+
+                const position = await this.llmService.findPosition(
+                  screenshot,
+                  orchestratorResponse.description,
+                  3, // 3 retries
+                );
+
+                // Convert normalized coordinates to pixels
+                const pixelCoords = this.llmService.normalizeToPixels(position);
+                this.gatewayService.emitPositionDetected(
+                  taskId,
+                  pixelCoords,
+                  orchestratorResponse.description,
+                );
+
+                // Execute click
+                await this.desktopService.clickMouse(pixelCoords, 'left');
+                this.gatewayService.emitActionExecuted(taskId, 'click_mouse', {
+                  coordinates: pixelCoords,
+                  description: orchestratorResponse.description,
+                });
+
+                actionHistory.push({
+                  action: `Click on ${orchestratorResponse.description}`,
+                  result: `Clicked at (${pixelCoords.x}, ${pixelCoords.y})`,
+                });
+
+                // Wait a bit after click
+                await this.delay(1000);
+                break;
+
+              case 'type':
+                if (!orchestratorResponse.text) {
+                  throw new Error('Type action requires text');
+                }
+
+                await this.desktopService.typeText(orchestratorResponse.text);
+                this.gatewayService.emitActionExecuted(taskId, 'type_text', {
+                  text: orchestratorResponse.text,
+                });
+
+                actionHistory.push({
+                  action: `Type text`,
+                  result: `Typed: ${orchestratorResponse.text}`,
+                });
+
+                await this.delay(500);
+                break;
+
+              case 'wait':
+                await this.delay(2000);
+                actionHistory.push({
+                  action: 'Wait',
+                });
+                break;
+
+              case 'screenshot':
+                // Already took screenshot, just continue
+                break;
+
+              default:
+                this.logger.warn(`Unknown action: ${orchestratorResponse.action}`);
+                // Treat unknown action as wait to avoid crash
+                await this.delay(1000);
+                break;
+            }
+          } catch (actionError: any) {
+            consecutiveErrors++;
+            this.logger.error(
+              `Error in action execution (attempt ${consecutiveErrors}/${maxConsecutiveErrors}): ${actionError.message}`,
+              actionError.stack,
+            );
+
+            this.gatewayService.emitError(taskId, actionError.message, {
+              stack: actionError.stack,
+              iteration: iterationCount,
+            });
+
+            // If too many consecutive errors, fail the task
+            if (consecutiveErrors >= maxConsecutiveErrors) {
+              throw new Error(
+                `Too many consecutive errors (${consecutiveErrors}). Last error: ${actionError.message}`,
+              );
+            }
+
+            // Wait longer after errors before retrying
+            await this.delay(2000 * consecutiveErrors);
+          }
+        }
+
+        if (iterationCount >= maxIterations) {
+          throw new Error(
+            `Task exceeded maximum iterations (${maxIterations}). This might indicate an infinite loop or the task is too complex.`,
           );
         }
-
-        this.logger.debug(
-          `Orchestrator action: ${orchestratorResponse.action}`,
-        );
-
-        // Handle different actions
-        switch (orchestratorResponse.action) {
-          case 'done':
-            task.status = 'completed';
-            task.completedAt = new Date();
-            this.logger.log(`Task ${taskId} completed`);
-            this.gatewayService.emitTaskCompleted(taskId);
-            this.currentTaskId = null;
-            return;
-
-          case 'click':
-            if (!orchestratorResponse.description) {
-              throw new Error('Click action requires a description');
-            }
-
-            // Find position using Position LLM
-            this.gatewayService.emitPositionRequest(
-              taskId,
-              orchestratorResponse.description,
-            );
-
-            const position = await this.llmService.findPosition(
-              screenshot,
-              orchestratorResponse.description,
-              3, // 3 retries
-            );
-
-            // Convert normalized coordinates to pixels
-            const pixelCoords = this.llmService.normalizeToPixels(position);
-            this.gatewayService.emitPositionDetected(
-              taskId,
-              pixelCoords,
-              orchestratorResponse.description,
-            );
-
-            // Execute click
-            await this.desktopService.clickMouse(pixelCoords, 'left');
-            this.gatewayService.emitActionExecuted(taskId, 'click_mouse', {
-              coordinates: pixelCoords,
-              description: orchestratorResponse.description,
-            });
-
-            actionHistory.push({
-              action: `Click on ${orchestratorResponse.description}`,
-              result: `Clicked at (${pixelCoords.x}, ${pixelCoords.y})`,
-            });
-
-            // Wait a bit after click
-            await this.delay(1000);
-            break;
-
-          case 'type':
-            if (!orchestratorResponse.text) {
-              throw new Error('Type action requires text');
-            }
-
-            await this.desktopService.typeText(orchestratorResponse.text);
-            this.gatewayService.emitActionExecuted(taskId, 'type_text', {
-              text: orchestratorResponse.text,
-            });
-
-            actionHistory.push({
-              action: `Type text`,
-              result: `Typed: ${orchestratorResponse.text}`,
-            });
-
-            await this.delay(500);
-            break;
-
-          case 'wait':
-            await this.delay(2000);
-            actionHistory.push({
-              action: 'Wait',
-            });
-            break;
-
-          case 'screenshot':
-            // Already took screenshot, just continue
-            break;
-
-          default:
-            this.logger.warn(
-              `Unknown action: ${orchestratorResponse.action}`,
-            );
-        }
-      }
-
-      if (iterationCount >= maxIterations) {
-        throw new Error('Task exceeded maximum iterations');
-      }
-    } catch (error: any) {
+      } catch (error: any) {
       task.status = 'failed';
       task.error = error.message;
       task.completedAt = new Date();

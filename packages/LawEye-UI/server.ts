@@ -47,7 +47,12 @@ app
       );
 
       // Proxy WebSocket connections to LawEye backend
-      if (pathname?.startsWith('/api/socket.io')) {
+      if (pathname?.startsWith('/api/') || pathname?.startsWith('/socket.io')) {
+        // Rewrite path for socket.io
+        if (pathname.startsWith('/api/socket.io')) {
+          // Proxy to /socket.io on backend
+          request.url = request.url!.replace('/api/socket.io', '/socket.io');
+        }
         return apiProxy.upgrade(request, socket as any, head);
       }
 
