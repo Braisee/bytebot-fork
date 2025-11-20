@@ -7,7 +7,7 @@ const API_BASE_URL =
 export interface Task {
   id: string;
   description: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   error?: string;
   createdAt: string;
   completedAt?: string;
@@ -51,6 +51,19 @@ export async function getAllTasks(): Promise<Task[]> {
     throw new Error('Failed to get tasks');
   }
 
+  return response.json();
+}
+
+export async function cancelTask(taskId: string): Promise<Task> {
+  const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({
+      message: 'Failed to cancel task',
+    }));
+    throw new Error(error.message || 'Failed to cancel task');
+  }
   return response.json();
 }
 

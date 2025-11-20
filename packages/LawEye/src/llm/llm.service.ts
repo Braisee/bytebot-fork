@@ -112,7 +112,7 @@ Be specific in your descriptions. For example, instead of "button", say "Submit 
             messages,
             max_tokens: 500,
             temperature: 0.3, // Lower temperature for more consistent JSON responses
-            response_format: { type: 'json_object' }, // Force JSON response if supported
+            // LM Studio doesn't support 'json_object', use 'text' and parse JSON from response
           }),
           new Promise((_, reject) =>
             setTimeout(
@@ -188,19 +188,28 @@ Be specific in your descriptions. For example, instead of "button", say "Submit 
   ): Promise<PositionResult> {
     this.logger.debug(`Finding position for: "${description}"`);
 
-    const positionPrompt = `Tu es un modèle de vision et langage capable d'analyser une image d'interface utilisateur et de localiser un élément décrit en texte. Les coordonnées que tu dois fournir sont normalisées entre 0 et 1, avec (0,0) en haut à gauche et (1,1) en bas à droite de l'image.
+    const positionPrompt = `You are a vision and language model that can analyze a UI image and locate an element described in text. The coordinates you must provide are normalized between 0 and 1, with (0,0) at the top-left and (1,1) at the bottom-right of the image.
 
-Tâche :
-À partir de l'image fournie et de la description qui suit, identifie avec précision la position centrale de l'élément sur l'image. Renvoie UNIQUEMENT un objet JSON au format suivant :
+Task:
+From the provided image and the following description, identify the precise center position of the element on the image. Return ONLY a JSON object in the following format:
 
 {
-  "x": valeur_entre_0_et_1,  // position horizontal normalisée (0 = gauche, 1 = droite)
-  "y": valeur_entre_0_et_1   // position vertical normalisée (0 = haut, 1 = bas)
+  "x": value_between_0_and_1,
+  "y": value_between_0_and_1
 }
 
-Description précise de l'élément : "${description}"
+Element description: "${description}"
 
-IMPORTANT: Renvoie UNIQUEMENT le JSON, rien d'autre. Pas de texte avant ou après.`;
+CRITICAL RULES:
+1. Return ONLY the JSON object, nothing else
+2. No text before or after the JSON
+3. No explanations, no thinking, no markdown
+4. Only the JSON object: {"x": 0.5, "y": 0.5}
+
+Example of correct response:
+{"x": 0.125, "y": 0.15}
+
+Do not include any text, explanations, or other content. Only return the JSON object.`;
 
     let lastError: Error | null = null;
 
@@ -232,13 +241,16 @@ IMPORTANT: Renvoie UNIQUEMENT le JSON, rien d'autre. Pas de texte avant ou aprè
         const startTime = Date.now();
         let response;
         try {
+          this.logger.debug(
+            `Calling Position LLM with model: ${this.positionModel} for: "${description}"`,
+          );
           response = await Promise.race([
             this.openai.chat.completions.create({
               model: this.positionModel,
               messages,
               max_tokens: 200,
               temperature: 0.1, // Very low temperature for precise results
-              response_format: { type: 'json_object' }, // Force JSON response if supported
+              // LM Studio doesn't support 'json_object', use 'text' and parse JSON from response
             }),
             new Promise((_, reject) =>
               setTimeout(
@@ -270,7 +282,10 @@ IMPORTANT: Renvoie UNIQUEMENT le JSON, rien d'autre. Pas de texte avant ou aprè
           throw new Error('No response from position LLM');
         }
 
-        this.logger.debug(`Position LLM response (${content.length} chars): ${content}`);
+        this.logger.debug(
+          `Position LLM response (${content.length} chars): ${content.substring(0, 500)}${content.length > 500 ? '...' : ''}`,
+        );
+        this.logger.debug(`Full Position LLM response: ${content}`);
 
         const position = this.parsePositionResponse(content);
 
@@ -440,8 +455,35 @@ IMPORTANT: Renvoie UNIQUEMENT le JSON, rien d'autre. Pas de texte avant ou aprè
   private parsePositionResponse(content: string): PositionResult {
     this.logger.debug(`Parsing position response: ${content.substring(0, 200)}...`);
 
+    // Remove common prefixes like [THINK], [REASONING], etc.
+    let cleanedContent = content.trim();
+    
+    // Remove thinking tags like [THINK], [REASONING], [THOUGHT], etc. (case insensitive)
+    // Handle both [THINK]text and [THINK]\ntext formats
+    cleanedContent = cleanedContent.replace(/^\[THINK\]\s*/i, '');
+    cleanedContent = cleanedContent.replace(/^\[REASONING\]\s*/i, '');
+    cleanedContent = cleanedContent.replace(/^\[THOUGHT\]\s*/i, '');
+    cleanedContent = cleanedContent.replace(/^\[ANALYSIS\]\s*/i, '');
+    
+    // Remove everything before the first { (including any remaining text from thinking blocks)
+    const firstBrace = cleanedContent.indexOf('{');
+    if (firstBrace > 0) {
+      const textBefore = cleanedContent.substring(0, firstBrace);
+      this.logger.debug(`Removing text before JSON: "${textBefore.substring(0, 100)}..."`);
+      cleanedContent = cleanedContent.substring(firstBrace);
+    }
+    
+    // Find the last } to ensure we have complete JSON
+    const lastBrace = cleanedContent.lastIndexOf('}');
+    if (lastBrace > 0 && lastBrace < cleanedContent.length - 1) {
+      // There might be text after the JSON, remove it
+      cleanedContent = cleanedContent.substring(0, lastBrace + 1);
+    }
+    
+    this.logger.debug(`Cleaned content for parsing (${cleanedContent.length} chars): ${cleanedContent.substring(0, 300)}${cleanedContent.length > 300 ? '...' : ''}`);
+
     // Try to extract JSON from markdown code blocks first
-    const jsonCodeBlockMatch = content.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+    const jsonCodeBlockMatch = cleanedContent.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
     if (jsonCodeBlockMatch) {
       try {
         const parsed = JSON.parse(jsonCodeBlockMatch[1]);
@@ -459,11 +501,26 @@ IMPORTANT: Renvoie UNIQUEMENT le JSON, rien d'autre. Pas de texte avant ou aprè
       }
     }
 
-    // Try to find JSON object with x and y
-    const jsonMatch = content.match(/\{[\s\S]*?"x"[\s\S]*?"y"[\s\S]*?\}/);
+    // Try to find JSON object with x and y (more flexible regex)
+    const jsonMatch = cleanedContent.match(/\{\s*["']?x["']?\s*:\s*([0-9.]+)\s*,\s*["']?y["']?\s*:\s*([0-9.]+)\s*\}/);
     if (jsonMatch) {
       try {
-        const parsed = JSON.parse(jsonMatch[0]);
+        const x = parseFloat(jsonMatch[1]);
+        const y = parseFloat(jsonMatch[2]);
+        if (!isNaN(x) && !isNaN(y)) {
+          this.logger.debug(`Parsed JSON directly from regex: x=${x}, y=${y}`);
+          return { x, y };
+        }
+      } catch (error) {
+        this.logger.warn('Failed to parse JSON from regex match', error);
+      }
+    }
+
+    // Try to find JSON object with x and y (broader match)
+    const jsonObjectMatch = cleanedContent.match(/\{[\s\S]*?"x"[\s\S]*?"y"[\s\S]*?\}/);
+    if (jsonObjectMatch) {
+      try {
+        const parsed = JSON.parse(jsonObjectMatch[0]);
         if (
           typeof parsed.x === 'number' &&
           typeof parsed.y === 'number' &&
@@ -478,9 +535,9 @@ IMPORTANT: Renvoie UNIQUEMENT le JSON, rien d'autre. Pas de texte avant ou aprè
       }
     }
 
-    // Try to parse entire content as JSON
+    // Try to parse entire cleaned content as JSON
     try {
-      const parsed = JSON.parse(content.trim());
+      const parsed = JSON.parse(cleanedContent.trim());
       if (
         typeof parsed.x === 'number' &&
         typeof parsed.y === 'number' &&
@@ -494,16 +551,18 @@ IMPORTANT: Renvoie UNIQUEMENT le JSON, rien d'autre. Pas de texte avant ou aprè
       // Not JSON, try other methods
     }
 
-    // Try to extract numbers directly with various patterns
+    // Try to extract numbers directly with various patterns (improved)
     const patterns = [
       /"x"\s*:\s*([0-9.]+)[\s\S]*?"y"\s*:\s*([0-9.]+)/i,
+      /'x'\s*:\s*([0-9.]+)[\s\S]*?'y'\s*:\s*([0-9.]+)/i,
+      /x\s*[:=]\s*([0-9.]+)[\s\S]*y\s*[:=]\s*([0-9.]+)/i,
       /x[:\s=]+([0-9.]+)[\s\S]*y[:\s=]+([0-9.]+)/i,
       /\(([0-9.]+),\s*([0-9.]+)\)/,
       /\[([0-9.]+),\s*([0-9.]+)\]/,
     ];
 
     for (const pattern of patterns) {
-      const match = content.match(pattern);
+      const match = cleanedContent.match(pattern);
       if (match) {
         const x = parseFloat(match[1]);
         const y = parseFloat(match[2]);
@@ -518,6 +577,7 @@ IMPORTANT: Renvoie UNIQUEMENT le JSON, rien d'autre. Pas de texte avant ou aprè
     }
 
     this.logger.error(`Could not parse position from response: ${content}`);
+    this.logger.error(`Cleaned content: ${cleanedContent.substring(0, 300)}`);
     throw new Error(`Could not parse position from response: ${content.substring(0, 200)}`);
   }
 

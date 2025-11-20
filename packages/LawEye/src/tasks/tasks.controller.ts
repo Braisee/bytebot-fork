@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Delete,
   Body,
   Param,
   HttpException,
@@ -52,6 +53,20 @@ export class TasksController {
       throw new HttpException('Task not found', HttpStatus.NOT_FOUND);
     }
     return task;
+  }
+
+  @Delete(':id')
+  cancel(@Param('id') id: string) {
+    try {
+      const task = this.tasksService.cancel(id);
+      return task;
+    } catch (error: any) {
+      this.logger.error(`Error cancelling task: ${error.message}`, error.stack);
+      throw new HttpException(
+        error.message || 'Failed to cancel task',
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 }
 

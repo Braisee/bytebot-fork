@@ -7,6 +7,7 @@ import { LlmModule } from './llm/llm.module';
 import { TasksModule } from './tasks/tasks.module';
 import { GatewayModule } from './gateway/gateway.module';
 import { TestDesktopModule } from './test-desktop/test-desktop.module';
+import { TestLlmModule } from './test-llm/test-llm.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { TestDesktopModule } from './test-desktop/test-desktop.module';
     TasksModule,
     GatewayModule,
     TestDesktopModule,
+    TestLlmModule,
   ],
   controllers: [AppController],
   providers: [AppService],

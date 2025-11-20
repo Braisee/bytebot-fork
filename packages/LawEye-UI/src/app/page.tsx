@@ -6,7 +6,7 @@ import { DesktopView } from '@/components/DesktopView';
 import { LogsView } from '@/components/LogsView';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import { getTask } from '@/utils/api';
+import { getTask, cancelTask } from '@/utils/api';
 import { Task } from '@/utils/api';
 import { cn } from '@/utils/cn';
 
@@ -23,8 +23,12 @@ export default function Home() {
           const task = await getTask(currentTaskId);
           setCurrentTask(task);
 
-          // If task is completed or failed, stop listening after a delay
-          if (task.status === 'completed' || task.status === 'failed') {
+          // If task is completed, failed, or cancelled, stop listening after a delay
+          if (
+            task.status === 'completed' ||
+            task.status === 'failed' ||
+            task.status === 'cancelled'
+          ) {
             setTimeout(() => {
               setCurrentTaskId(null);
               setCurrentTask(null);
@@ -102,7 +106,49 @@ export default function Home() {
                     {currentTask.status === 'completed' && 'Terminé'}
                     {currentTask.status === 'failed' && 'Échoué'}
                     {currentTask.status === 'pending' && 'En attente'}
+                    {currentTask.status === 'cancelled' && 'Annulé'}
                   </span>
+                  {currentTask.status === 'running' && (
+                    <button
+                      onClick={async () => {
+                        if (
+                          currentTaskId &&
+                          confirm(
+                            'Êtes-vous sûr de vouloir annuler cette tâche ?',
+                          )
+                        ) {
+                          try {
+                            await cancelTask(currentTaskId);
+                            setCurrentTask(null);
+                            setCurrentTaskId(null);
+                          } catch (error: any) {
+                            console.error('Error cancelling task:', error);
+                            alert(
+                              error.message ||
+                                'Erreur lors de l\'annulation de la tâche',
+                            );
+                          }
+                        }
+                      }}
+                      className="rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors"
+                      title="Annuler la tâche en cours"
+                    >
+                      <svg
+                        className="mr-1.5 inline-block h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                      Annuler
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -141,9 +187,38 @@ export default function Home() {
                     </svg>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-bytebot-bronze-light-12">
-                      Tâche actuelle
-                    </p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium text-bytebot-bronze-light-12">
+                        Tâche actuelle
+                      </p>
+                      {currentTask.status === 'running' && (
+                        <button
+                          onClick={async () => {
+                            if (
+                              currentTaskId &&
+                              confirm(
+                                'Êtes-vous sûr de vouloir annuler cette tâche ?',
+                              )
+                            ) {
+                              try {
+                                await cancelTask(currentTaskId);
+                                setCurrentTask(null);
+                                setCurrentTaskId(null);
+                              } catch (error: any) {
+                                console.error('Error cancelling task:', error);
+                                alert(
+                                  error.message ||
+                                    'Erreur lors de l\'annulation de la tâche',
+                                );
+                              }
+                            }
+                          }}
+                          className="rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                        >
+                          Annuler
+                        </button>
+                      )}
+                    </div>
                     <p className="mt-1 text-sm text-bytebot-bronze-light-11">
                       {currentTask.description}
                     </p>

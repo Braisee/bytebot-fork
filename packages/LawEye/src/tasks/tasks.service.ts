@@ -6,7 +6,7 @@ import { GatewayService } from '../gateway/gateway.service';
 export interface Task {
   id: string;
   description: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   error?: string;
   createdAt: Date;
   completedAt?: Date;
@@ -73,6 +73,36 @@ export class TasksService {
   }
 
   /**
+   * Cancel a task
+   */
+  cancel(taskId: string): Task {
+    const task = this.tasks.get(taskId);
+    if (!task) {
+      throw new Error(`Task ${taskId} not found`);
+    }
+
+    if (task.status !== 'running' && task.status !== 'pending') {
+      throw new Error(
+        `Cannot cancel task ${taskId}: task is already ${task.status}`,
+      );
+    }
+
+    task.status = 'failed';
+    task.error = 'Task cancelled by user';
+    task.completedAt = new Date();
+
+    // If this is the current task, clear it
+    if (this.currentTaskId === taskId) {
+      this.currentTaskId = null;
+    }
+
+    this.logger.log(`Task ${taskId} cancelled`);
+    this.gatewayService.emitTaskFailed(taskId, 'Task cancelled by user');
+
+    return task;
+  }
+
+  /**
    * Execute a task
    */
   private async executeTask(taskId: string): Promise<void> {
@@ -99,7 +129,11 @@ export class TasksService {
         let consecutiveErrors = 0;
         const maxConsecutiveErrors = 5;
 
-        while (task.status === 'running' && iterationCount < maxIterations) {
+        while (
+          task.status === 'running' &&
+          iterationCount < maxIterations &&
+          this.currentTaskId === taskId
+        ) {
           iterationCount++;
 
           this.logger.log(
