@@ -192,7 +192,17 @@ export function LogsView({ events, className }: LogsViewProps) {
                       <p className={cn('font-medium', styles.text)}>
                         {formatted.title}
                       </p>
-                      {formatted.details && (
+                      {event.type === 'screenshot_taken' && event.data.screenshot ? (
+                        <div className="mt-2 -mx-3.5 -mb-1.5">
+                          <img
+                            src={`data:image/png;base64,${event.data.screenshot}`}
+                            alt="Screenshot"
+                            className="w-full h-auto max-h-96 object-contain block"
+                            loading="lazy"
+                            style={{ display: 'block', margin: 0, padding: 0 }}
+                          />
+                        </div>
+                      ) : formatted.details ? (
                         <p
                           className={cn(
                             'mt-1.5 whitespace-pre-wrap break-words text-xs leading-relaxed',
@@ -202,7 +212,7 @@ export function LogsView({ events, className }: LogsViewProps) {
                         >
                           {formatted.details}
                         </p>
-                      )}
+                      ) : null}
                       <time className="mt-2 block text-xs opacity-60">
                         {new Date(event.timestamp).toLocaleTimeString('fr-FR', {
                           hour: '2-digit',
