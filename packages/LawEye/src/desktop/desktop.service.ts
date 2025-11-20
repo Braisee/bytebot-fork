@@ -78,13 +78,16 @@ export class DesktopService {
    * Click the mouse at specified coordinates
    * @param coordinates - The x, y coordinates to click at
    * @param button - Mouse button to use (default: 'left')
+   * @param clickCount - Number of clicks (1 = single, 2 = double, etc.) (default: 1)
    */
   async clickMouse(
     coordinates: Coordinates,
     button: 'left' | 'right' | 'middle' = 'left',
+    clickCount: number = 1,
   ): Promise<void> {
+    const clickType = clickCount === 1 ? 'single' : clickCount === 2 ? 'double' : `${clickCount}x`;
     this.logger.debug(
-      `Clicking mouse at (${coordinates.x}, ${coordinates.y}) with ${button} button`,
+      `${clickType} clicking mouse at (${coordinates.x}, ${coordinates.y}) with ${button} button`,
     );
     const startTime = Date.now();
 
@@ -93,7 +96,7 @@ export class DesktopService {
         action: 'click_mouse',
         coordinates,
         button,
-        clickCount: 1,
+        clickCount,
       };
 
       const controller = new AbortController();
@@ -113,7 +116,9 @@ export class DesktopService {
       }
 
       const duration = Date.now() - startTime;
-      this.logger.debug(`Mouse clicked successfully in ${duration}ms`);
+      this.logger.debug(
+        `Mouse ${clickType} clicked successfully in ${duration}ms`,
+      );
     } catch (error: any) {
       const duration = Date.now() - startTime;
       if (error.name === 'AbortError') {

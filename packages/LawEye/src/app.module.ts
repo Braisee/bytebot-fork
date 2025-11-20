@@ -6,6 +6,7 @@ import { DesktopModule } from './desktop/desktop.module';
 import { LlmModule } from './llm/llm.module';
 import { TasksModule } from './tasks/tasks.module';
 import { GatewayModule } from './gateway/gateway.module';
+import { TestDesktopModule } from './test-desktop/test-desktop.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { GatewayModule } from './gateway/gateway.module';
     LlmModule,
     TasksModule,
     GatewayModule,
+    TestDesktopModule,
   ],
   controllers: [AppController],
   providers: [AppService],
