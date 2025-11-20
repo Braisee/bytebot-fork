@@ -1,6 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Coordinates, ClickMouseAction, TypeTextAction } from '@bytebot/shared';
+import {
+  Coordinates,
+  ClickMouseAction,
+  TypeTextAction,
+  TypeKeysAction,
+} from '@bytebot/shared';
 
 @Injectable()
 export class DesktopService {
@@ -185,6 +190,60 @@ export class DesktopService {
         );
       }
       this.logger.error(`Error typing text after ${duration}ms: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * Press a key or combination of keys (e.g., "Enter", "Tab", "Escape")
+   * @param keys - Array of key names to press (e.g., ["Enter"], ["Ctrl", "C"])
+   * @param delay - Optional delay between key presses in milliseconds
+   */
+  async pressKey(keys: string[], delay?: number): Promise<void> {
+    this.logger.debug(`Pressing keys: [${keys.join(', ')}]`);
+    const startTime = Date.now();
+
+    try {
+      const action: TypeKeysAction = {
+        action: 'type_keys',
+        keys,
+        delay,
+      };
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      const response = await fetch(`${this.baseUrl}/computer-use`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(action),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`Failed to press keys: ${response.statusText}`);
+      }
+
+      const duration = Date.now() - startTime;
+      this.logger.debug(`Keys pressed successfully in ${duration}ms`);
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+      if (error.name === 'AbortError') {
+        this.logger.error(`Press key request timed out after ${duration}ms`);
+        throw new Error('Press key request timed out after 10s');
+      }
+      if (error.code === 'ECONNREFUSED' || error.message?.includes('fetch')) {
+        this.logger.error(`Failed to connect to bytebot-desktop at ${this.baseUrl}`);
+        throw new Error(
+          `Failed to connect to bytebot-desktop: ${error.message}. Make sure bytebot-desktop is running.`,
+        );
+      }
+      this.logger.error(
+        `Error pressing keys after ${duration}ms: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }

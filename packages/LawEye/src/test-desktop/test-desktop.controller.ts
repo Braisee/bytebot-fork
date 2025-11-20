@@ -137,6 +137,42 @@ export class TestDesktopController {
   }
 
   /**
+   * Test: Appuyer sur une touche
+   * POST /test-desktop/press-key
+   * Body: { keys: string[], delay?: number }
+   */
+  @Post('press-key')
+  async testPressKey(@Body() body: { keys: string[]; delay?: number }) {
+    this.logger.log(`Testing press key: [${body.keys?.join(', ') || 'none'}]`);
+
+    if (!body.keys || !Array.isArray(body.keys) || body.keys.length === 0) {
+      return {
+        success: false,
+        error: 'Invalid keys. keys must be a non-empty array of strings.',
+      };
+    }
+
+    try {
+      await this.desktopService.pressKey(body.keys, body.delay);
+      return {
+        success: true,
+        message: `Keys pressed successfully: [${body.keys.join(', ')}]`,
+        data: {
+          keys: body.keys,
+          delay: body.delay,
+        },
+      };
+    } catch (error: any) {
+      this.logger.error(`Press key test failed: ${error.message}`, error.stack);
+      return {
+        success: false,
+        error: error.message,
+        stack: error.stack,
+      };
+    }
+  }
+
+  /**
    * Test: Obtenir la position du curseur
    * GET /test-desktop/cursor-position
    */
@@ -255,19 +291,26 @@ export class TestDesktopController {
           example: { x: 640, y: 480, button: 'left', clickCount: 2 },
           note: 'clickCount: 1 = single click, 2 = double click, 3+ = multiple clicks',
         },
-        {
-          method: 'POST',
-          path: '/test-desktop/type',
-          description: 'Type text at current cursor position',
-          body: '{ text: string, delay?: number }',
-          example: { text: 'Hello World', delay: 50 },
-        },
-        {
-          method: 'GET',
-          path: '/test-desktop/cursor-position',
-          description: 'Get current cursor position',
-          response: '{ success: boolean, data: { coordinates: { x, y } } }',
-        },
+                {
+                  method: 'POST',
+                  path: '/test-desktop/type',
+                  description: 'Type text at current cursor position',
+                  body: '{ text: string, delay?: number }',
+                  example: { text: 'Hello World', delay: 50 },
+                },
+                {
+                  method: 'POST',
+                  path: '/test-desktop/press-key',
+                  description: 'Press a key or key combination (e.g., Enter, Tab, Escape)',
+                  body: '{ keys: string[], delay?: number }',
+                  example: { keys: ['Enter'], delay: 50 },
+                },
+                {
+                  method: 'GET',
+                  path: '/test-desktop/cursor-position',
+                  description: 'Get current cursor position',
+                  response: '{ success: boolean, data: { coordinates: { x, y } } }',
+                },
         {
           method: 'POST',
           path: '/test-desktop/full-test',

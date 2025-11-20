@@ -23,16 +23,21 @@ export default function Home() {
           const task = await getTask(currentTaskId);
           setCurrentTask(task);
 
-          // If task is completed, failed, or cancelled, stop listening after a delay
+          // If task is completed, failed, or cancelled, reset immediately
+          // But also check the event type directly for immediate response
           if (
+            event.type === 'task_completed' ||
+            event.type === 'task_failed' ||
             task.status === 'completed' ||
             task.status === 'failed' ||
             task.status === 'cancelled'
           ) {
+            // Reset immediately when task is finished
             setTimeout(() => {
               setCurrentTaskId(null);
               setCurrentTask(null);
-            }, 5000);
+              clearEvents(); // Clear events to start fresh for next task
+            }, 2000); // Reduced delay to 2 seconds
           }
         } catch (error) {
           console.error('Error fetching task:', error);
@@ -40,6 +45,13 @@ export default function Home() {
       }
     },
   });
+
+  // Function to manually reset task state
+  const handleResetTask = () => {
+    setCurrentTaskId(null);
+    setCurrentTask(null);
+    clearEvents();
+  };
 
   const handleTaskCreated = (taskId: string) => {
     setCurrentTaskId(taskId);
@@ -166,7 +178,7 @@ export default function Home() {
           <CardContent>
             <TaskInput
               onTaskCreated={handleTaskCreated}
-              disabled={currentTask?.status === 'running'}
+              disabled={currentTask?.status === 'running' || currentTask?.status === 'pending'}
             />
             {currentTask && (
               <div className="mt-4 rounded-lg border border-bytebot-bronze-light-7 bg-bytebot-bronze-light-1 p-4">
@@ -191,33 +203,45 @@ export default function Home() {
                       <p className="text-sm font-medium text-bytebot-bronze-light-12">
                         Tâche actuelle
                       </p>
-                      {currentTask.status === 'running' && (
-                        <button
-                          onClick={async () => {
-                            if (
-                              currentTaskId &&
-                              confirm(
-                                'Êtes-vous sûr de vouloir annuler cette tâche ?',
-                              )
-                            ) {
-                              try {
-                                await cancelTask(currentTaskId);
-                                setCurrentTask(null);
-                                setCurrentTaskId(null);
-                              } catch (error: any) {
-                                console.error('Error cancelling task:', error);
-                                alert(
-                                  error.message ||
-                                    'Erreur lors de l\'annulation de la tâche',
-                                );
+                      <div className="flex items-center gap-2">
+                        {currentTask.status === 'running' && (
+                          <button
+                            onClick={async () => {
+                              if (
+                                currentTaskId &&
+                                confirm(
+                                  'Êtes-vous sûr de vouloir annuler cette tâche ?',
+                                )
+                              ) {
+                                try {
+                                  await cancelTask(currentTaskId);
+                                  handleResetTask();
+                                } catch (error: any) {
+                                  console.error('Error cancelling task:', error);
+                                  alert(
+                                    error.message ||
+                                      'Erreur lors de l\'annulation de la tâche',
+                                  );
+                                }
                               }
-                            }
-                          }}
-                          className="rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-                        >
-                          Annuler
-                        </button>
-                      )}
+                            }}
+                            className="rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                          >
+                            Annuler
+                          </button>
+                        )}
+                        {(currentTask.status === 'completed' ||
+                          currentTask.status === 'failed' ||
+                          currentTask.status === 'cancelled') && (
+                          <button
+                            onClick={handleResetTask}
+                            className="rounded-md border border-bytebot-bronze-light-7 bg-bytebot-bronze-light-3 px-3 py-1.5 text-xs font-medium text-bytebot-bronze-light-11 hover:bg-bytebot-bronze-light-4 focus:outline-none focus:ring-2 focus:ring-bytebot-bronze-light-7 focus:ring-offset-2"
+                            title="Nouvelle tâche"
+                          >
+                            Nouvelle tâche
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <p className="mt-1 text-sm text-bytebot-bronze-light-11">
                       {currentTask.description}
@@ -225,6 +249,11 @@ export default function Home() {
                     {currentTask.error && (
                       <p className="mt-2 text-xs text-red-600">
                         {currentTask.error}
+                      </p>
+                    )}
+                    {currentTask.status === 'completed' && (
+                      <p className="mt-2 text-xs text-green-600 font-medium">
+                        ✓ Tâche terminée avec succès
                       </p>
                     )}
                   </div>

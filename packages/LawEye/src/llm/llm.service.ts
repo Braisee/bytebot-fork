@@ -9,9 +9,10 @@ export interface PositionResult {
 }
 
 export interface OrchestratorResponse {
-  action: 'click' | 'type' | 'wait' | 'screenshot' | 'done';
+  action: 'click' | 'type' | 'press_key' | 'wait' | 'screenshot' | 'done';
   description?: string; // For position LLM: what to find
   text?: string; // For type action
+  key?: string; // For press_key action (e.g., "Enter", "Tab", "Escape")
   thinking?: string; // If model supports thinking
 }
 
@@ -68,13 +69,16 @@ export class LlmService {
 
 Respond ONLY with valid JSON in this format:
 {
-  "action": "click" | "type" | "wait" | "screenshot" | "done",
+  "action": "click" | "type" | "press_key" | "wait" | "screenshot" | "done",
   "description": "description of element to click (if action is click)",
   "text": "text to type (if action is type)",
+  "key": "key to press (if action is press_key, e.g., 'Enter', 'Tab', 'Escape')",
   "thinking": "brief explanation of your reasoning"
 }
 
-Be specific in your descriptions. For example, instead of "button", say "Submit button" or "Login button".`;
+Be specific in your descriptions. For example, instead of "button", say "Submit button" or "Login button".
+
+Available keys for press_key: Enter, Tab, Escape, Space, Backspace, Delete, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Home, End, PageUp, PageDown, F1-F12, etc.`;
 
       const messages: ChatCompletionMessageParam[] = [
         {
@@ -163,6 +167,10 @@ Be specific in your descriptions. For example, instead of "button", say "Submit 
         throw new Error('Type action requires text field');
       }
 
+      if (parsed.action === 'press_key' && !parsed.key) {
+        throw new Error('Press key action requires key field');
+      }
+
       this.logger.debug(`Parsed action: ${parsed.action}`);
 
       return parsed;
@@ -188,7 +196,20 @@ Be specific in your descriptions. For example, instead of "button", say "Submit 
   ): Promise<PositionResult> {
     this.logger.debug(`Finding position for: "${description}"`);
 
-    const positionPrompt = `You are a vision and language model that can analyze a UI image and locate an element described in text. The coordinates you must provide are normalized between 0 and 1, with (0,0) at the top-left and (1,1) at the bottom-right of the image.
+    const positionPrompt = `You are a vision and language model that can analyze a UI image and locate an element described in text.
+
+⚠️ CRITICAL REQUIREMENT - READ THIS CAREFULLY ⚠️
+
+The coordinates you provide MUST be normalized between 0 and 1:
+- x MUST be between 0.0 and 1.0 (0 = left edge, 1 = right edge)
+- y MUST be between 0.0 and 1.0 (0 = top edge, 1 = bottom edge)
+- (0, 0) is at the top-left corner
+- (1, 1) is at the bottom-right corner
+
+DO NOT use pixel coordinates (like x: 640, y: 480)
+DO NOT use coordinates outside the 0-1 range
+DO NOT use percentages (like x: 50%, y: 50%)
+ONLY use normalized coordinates between 0.0 and 1.0
 
 Task:
 From the provided image and the following description, identify the precise center position of the element on the image. Return ONLY a JSON object in the following format:
@@ -201,15 +222,23 @@ From the provided image and the following description, identify the precise cent
 Element description: "${description}"
 
 CRITICAL RULES:
-1. Return ONLY the JSON object, nothing else
-2. No text before or after the JSON
-3. No explanations, no thinking, no markdown
-4. Only the JSON object: {"x": 0.5, "y": 0.5}
+1. x MUST be between 0.0 and 1.0 (OBLIGATORY - system will fail if not)
+2. y MUST be between 0.0 and 1.0 (OBLIGATORY - system will fail if not)
+3. Return ONLY the JSON object, nothing else
+4. No text before or after the JSON
+5. No explanations, no thinking, no markdown
+6. Only the JSON object: {"x": 0.5, "y": 0.5}
 
 Example of correct response:
 {"x": 0.125, "y": 0.15}
 
-Do not include any text, explanations, or other content. Only return the JSON object.`;
+Examples of INCORRECT responses (DO NOT DO THIS):
+NO {"x": 640, "y": 480}  // Wrong: pixel coordinates
+NO {"x": 50, "y": 50}    // Wrong: outside 0-1 range
+NO {"x": 0.5%, "y": 0.5%} // Wrong: percentages
+YES {"x": 0.5, "y": 0.5}  // Correct: normalized 0-1
+
+Remember: The system CANNOT work if coordinates are not between 0 and 1. This is OBLIGATORY.`;
 
     let lastError: Error | null = null;
 
@@ -411,7 +440,21 @@ Do not include any text, explanations, or other content. Only return the JSON ob
       return { action: 'click', description };
     }
 
+    if (lowerContent.includes('press') || lowerContent.includes('appuyer')) {
+      // Extract key name (Enter, Tab, Escape, etc.)
+      const keyMatch = content.match(/(?:press|appuyer)\s+(?:on\s+)?(?:the\s+)?(enter|tab|escape|space|backspace|delete|left|right|up|down|entrée|tabulation|échappement|échap|espace|retour|supprimer|suppr|f[0-9]{1,2})/i);
+      if (keyMatch) {
+        return { action: 'press_key', key: keyMatch[1] };
+      }
+    }
+
     if (lowerContent.includes('type') || lowerContent.includes('taper') || lowerContent.includes('écrire')) {
+      // Check if it's "press key" first (e.g., "press Enter" vs "type text")
+      const pressKeyMatch = content.match(/(?:press|appuyer)\s+(?:the\s+)?(enter|tab|escape|space|backspace|delete|left|right|up|down|entrée|tabulation|échappement|échap|espace|retour|supprimer|suppr|f[0-9]{1,2})/i);
+      if (pressKeyMatch) {
+        return { action: 'press_key', key: pressKeyMatch[1] };
+      }
+
       // Extract text to type - try multiple patterns
       let textMatch = content.match(/type\s+(?:the\s+)?["']([^"']+)["']/i);
       if (!textMatch) {
@@ -609,11 +652,13 @@ CORE WORKING PRINCIPLES
 
 2. **Human-Like Interaction** - Click near the visual centre of targets. Double-click desktop icons to open them.
 
-3. **Verify Every Step** - After each action, take another screenshot and confirm the expected state before continuing.
+3. **Click Before Typing** - ⚠️ **CRITICAL**: Before typing text into any field (search bar, input field, text area, etc.), you MUST first click on that field to focus it. Never use "type" action without first clicking on the target field. The system cannot type into unfocused fields.
 
-4. **Efficiency** - Combine related actions when possible. Minimize unnecessary waits.
+4. **Verify Every Step** - After each action, take another screenshot and confirm the expected state before continuing.
 
-5. **Stay Within Scope** - Do nothing the user didn't request. Don't suggest unrelated tasks.
+5. **Efficiency** - Combine related actions when possible. Minimize unnecessary waits.
+
+6. **Stay Within Scope** - Do nothing the user didn't request. Don't suggest unrelated tasks.
 
 ────────────────────────
 AVAILABLE ACTIONS
@@ -625,36 +670,48 @@ You can perform these actions:
    - Requires: "description" (clear description of what to find, e.g., "Firefox icon", "search bar", "Submit button")
    - Example: {"action": "click", "description": "Firefox icon"}
 
-2. **type** - Type text at the current cursor position
-   - Requires: "text" (the text to type)
-   - Example: {"action": "type", "text": "Hello World"}
+        2. **type** - Type text at the current cursor position
+           - ⚠️ **IMPORTANT**: You MUST click on the target field FIRST before using this action. Text can only be typed into focused fields.
+           - Workflow: First use "click" action on the field, then use "type" action.
+           - Requires: "text" (the text to type)
+           - Example workflow: 
+             - Step 1: {"action": "click", "description": "search bar"}
+             - Step 2: {"action": "type", "text": "Hello World"}
 
-3. **screenshot** - Take a new screenshot to see current state
-   - Example: {"action": "screenshot"}
+        3. **press_key** - Press a key or key combination (e.g., Enter, Tab, Escape)
+           - Requires: "key" (the key name, e.g., "Enter", "Tab", "Escape")
+           - Example: {"action": "press_key", "key": "Enter"}
+           - Common keys: Enter, Tab, Escape, Space, Backspace, Delete, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Home, End, PageUp, PageDown, F1-F12
 
-4. **wait** - Wait a moment (useful after actions that take time)
-   - Example: {"action": "wait"}
+        4. **screenshot** - Take a new screenshot to see current state
+           - Example: {"action": "screenshot"}
 
-5. **done** - Task is complete (only when user's goal is fully met)
-   - Example: {"action": "done"}
+        5. **wait** - Wait a moment (useful after actions that take time)
+           - Example: {"action": "wait"}
+
+        6. **done** - Task is complete (only when user's goal is fully met)
+           - Example: {"action": "done"}
 
 ────────────────────────
 RESPONSE FORMAT
 ────────────────────────
 
-You MUST respond with valid JSON in this format:
-{
-  "action": "click" | "type" | "wait" | "screenshot" | "done",
-  "description": "clear description of what to find (required for click actions)",
-  "text": "text to type (required for type actions)",
-  "thinking": "your reasoning about what you see and what to do next (optional)"
-}
+        You MUST respond with valid JSON in this format:
+        {
+          "action": "click" | "type" | "press_key" | "wait" | "screenshot" | "done",
+          "description": "clear description of what to find (required for click actions)",
+          "text": "text to type (required for type actions)",
+          "key": "key to press (required for press_key actions, e.g., 'Enter', 'Tab', 'Escape')",
+          "thinking": "your reasoning about what you see and what to do next (optional)"
+        }
 
-**IMPORTANT**: 
-- Always provide "description" when action is "click"
-- Always provide "text" when action is "type"
-- Only use "done" when the task is COMPLETELY finished
-- Be very specific in descriptions (e.g., "Firefox browser icon on desktop" not just "icon")
+        **IMPORTANT**: 
+        - Always provide "description" when action is "click"
+        - Always provide "text" when action is "type"
+        - ⚠️ **CRITICAL FOR TYPING**: Before using "type" action, you MUST first use "click" action on the target field to focus it. Never skip this step.
+        - Always provide "key" when action is "press_key" (e.g., "Enter" for search bars, "Tab" to navigate, "Escape" to cancel)
+        - Only use "done" when the task is COMPLETELY finished
+        - Be very specific in descriptions (e.g., "Firefox browser icon on desktop" not just "icon")
 
 Remember: **accuracy over speed, clarity over cleverness**. Think before each move, analyze the screenshot carefully, and always verify the result before continuing.`;
   }

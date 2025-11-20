@@ -275,6 +275,27 @@ export class TasksService {
                 await this.delay(500);
                 break;
 
+              case 'press_key':
+                if (!orchestratorResponse.key) {
+                  throw new Error('Press key action requires key');
+                }
+
+                // Normalize key name (e.g., "enter" -> "Enter", "Entrée" -> "Enter")
+                const normalizedKey = this.normalizeKeyName(orchestratorResponse.key);
+
+                await this.desktopService.pressKey([normalizedKey]);
+                this.gatewayService.emitActionExecuted(taskId, 'press_key', {
+                  key: normalizedKey,
+                });
+
+                actionHistory.push({
+                  action: `Press key`,
+                  result: `Pressed: ${normalizedKey}`,
+                });
+
+                await this.delay(500);
+                break;
+
               case 'wait':
                 await this.delay(2000);
                 actionHistory.push({
@@ -333,6 +354,69 @@ export class TasksService {
       this.currentTaskId = null;
       throw error;
     }
+  }
+
+  /**
+   * Normalize key name (e.g., "enter" -> "Enter", "Entrée" -> "Enter", "tab" -> "Tab")
+   */
+  private normalizeKeyName(key: string): string {
+    const keyLower = key.toLowerCase().trim();
+
+    // French to English mappings
+    const frenchToEnglish: Record<string, string> = {
+      entrée: 'Enter',
+      entre: 'Enter',
+      tabulation: 'Tab',
+      'échappement': 'Escape',
+      echappement: 'Escape',
+      'échap': 'Escape',
+      echap: 'Escape',
+      espace: 'Space',
+      retour: 'Backspace',
+      'retour arrière': 'Backspace',
+      supprimer: 'Delete',
+      suppr: 'Delete',
+      'flèche gauche': 'ArrowLeft',
+      'flèche droite': 'ArrowRight',
+      'flèche haut': 'ArrowUp',
+      'flèche bas': 'ArrowDown',
+    };
+
+    if (frenchToEnglish[keyLower]) {
+      return frenchToEnglish[keyLower];
+    }
+
+    // Standard English key names (capitalize first letter)
+    const standardKeys: Record<string, string> = {
+      enter: 'Enter',
+      tab: 'Tab',
+      escape: 'Escape',
+      space: 'Space',
+      backspace: 'Backspace',
+      delete: 'Delete',
+      insert: 'Insert',
+      home: 'Home',
+      end: 'End',
+      pageup: 'PageUp',
+      pagedown: 'PageDown',
+      left: 'ArrowLeft',
+      right: 'ArrowRight',
+      up: 'ArrowUp',
+      down: 'ArrowDown',
+    };
+
+    if (standardKeys[keyLower]) {
+      return standardKeys[keyLower];
+    }
+
+    // For function keys (F1-F12)
+    const fKeyMatch = keyLower.match(/^f([0-9]{1,2})$/);
+    if (fKeyMatch) {
+      return `F${fKeyMatch[1]}`;
+    }
+
+    // Default: capitalize first letter
+    return key.charAt(0).toUpperCase() + key.slice(1).toLowerCase();
   }
 
   private delay(ms: number): Promise<void> {
