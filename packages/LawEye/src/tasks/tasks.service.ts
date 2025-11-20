@@ -211,20 +211,50 @@ export class TasksService {
                   orchestratorResponse.description,
                 );
 
+                // Detect if it's a desktop element (icon on desktop)
+                // Desktop icons are typically:
+                // - Described with words like "desktop", "bureau", "icon", "icône"
+                // - Located in the top part of the screen (Y < 200 pixels)
+                const description = orchestratorResponse.description.toLowerCase();
+                const isDesktopElement =
+                  description.includes('desktop') ||
+                  description.includes('bureau') ||
+                  description.includes('icon') ||
+                  description.includes('icône') ||
+                  description.includes('on the desktop') ||
+                  description.includes('sur le bureau') ||
+                  (pixelCoords.y < 200 && // Icons are usually in top area
+                   (description.includes('firefox') ||
+                    description.includes('thunderbird') ||
+                    description.includes('code') ||
+                    description.includes('terminal') ||
+                    description.includes('file') ||
+                    description.includes('fichier')));
+
+                // Use double click for desktop elements, single click otherwise
+                const clickCount = isDesktopElement ? 2 : 1;
+                const clickType = clickCount === 2 ? 'double' : 'single';
+
+                this.logger.debug(
+                  `Detected ${isDesktopElement ? 'desktop' : 'application'} element, using ${clickType} click`,
+                );
+
                 // Execute click
-                await this.desktopService.clickMouse(pixelCoords, 'left');
+                await this.desktopService.clickMouse(pixelCoords, 'left', clickCount);
                 this.gatewayService.emitActionExecuted(taskId, 'click_mouse', {
                   coordinates: pixelCoords,
                   description: orchestratorResponse.description,
+                  clickCount,
+                  clickType,
                 });
 
                 actionHistory.push({
-                  action: `Click on ${orchestratorResponse.description}`,
-                  result: `Clicked at (${pixelCoords.x}, ${pixelCoords.y})`,
+                  action: `${clickType} click on ${orchestratorResponse.description}`,
+                  result: `${clickType} clicked at (${pixelCoords.x}, ${pixelCoords.y})`,
                 });
 
-                // Wait a bit after click
-                await this.delay(1000);
+                // Wait a bit after click (longer for double click)
+                await this.delay(clickCount === 2 ? 1500 : 1000);
                 break;
 
               case 'type':
