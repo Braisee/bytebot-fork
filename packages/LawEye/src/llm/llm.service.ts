@@ -76,7 +76,17 @@ Respond ONLY with valid JSON in this format:
   "thinking": "brief explanation of your reasoning"
 }
 
-Be specific in your descriptions. For example, instead of "button", say "Submit button" or "Login button".
+Be specific in your descriptions and ALWAYS include location context for click actions. 
+- Instead of "button", say "Submit button at bottom of login form" or "Login button in top-right corner"
+- Instead of "icon", say "Firefox icon on desktop, top-left area" or "Folder icon in file manager, left sidebar"
+- Include location details: area (top-left, center, bottom-right, etc.), container (desktop, browser window, dialog, menu, etc.), or relative position
+
+Examples of good descriptions with location:
+- "Firefox browser icon on desktop, top-left area"
+- "Search bar in browser window, top center, below address bar"
+- "Submit button at bottom of login form, right side"
+- "Close button (X) in top-right corner of dialog window"
+- "File menu item in application menu bar, top-left"
 
 Available keys for press_key: Enter, Tab, Escape, Space, Backspace, Delete, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Home, End, PageUp, PageDown, F1-F12, etc.`;
 
@@ -196,49 +206,39 @@ Available keys for press_key: Enter, Tab, Escape, Space, Backspace, Delete, Arro
   ): Promise<PositionResult> {
     this.logger.debug(`Finding position for: "${description}"`);
 
-    const positionPrompt = `You are a vision and language model that can analyze a UI image and locate an element described in text.
+    const positionPrompt = `You are a vision and language model that analyzes a UI screenshot and must locate an element described in text.
 
-⚠️ CRITICAL REQUIREMENT - READ THIS CAREFULLY ⚠️
+CRITICAL REQUIREMENTS (READ CAREFULLY):
+- The coordinates ("x" and "y") MUST be strictly normalized, between 0.0 and 1.0 (inclusive).
+- (0, 0) is the top-left of the image; (1, 1) the bottom-right.
+- UNDER NO CIRCUMSTANCES should you output pixel, percentage, or any value outside the [0.0, 1.0] range.
+- If you output values outside [0.0, 1.0], your answer will be considered incorrect and discarded.
+- DOUBLE CHECK your answer: any coordinate outside [0.0, 1.0] is an ERROR.
 
-The coordinates you provide MUST be normalized between 0 and 1:
-- x MUST be between 0.0 and 1.0 (0 = left edge, 1 = right edge)
-- y MUST be between 0.0 and 1.0 (0 = top edge, 1 = bottom edge)
-- (0, 0) is at the top-left corner
-- (1, 1) is at the bottom-right corner
+TASK:
+Given the screenshot and this description: "${description}", return the CENTER of the element as a JSON object with values strictly between 0 and 1 (e.g.: {"x": 0.50, "y": 0.25}) and NOTHING ELSE.
 
-DO NOT use pixel coordinates (like x: 640, y: 480)
-DO NOT use coordinates outside the 0-1 range
-DO NOT use percentages (like x: 50%, y: 50%)
-ONLY use normalized coordinates between 0.0 and 1.0
+⚠️ LOCATION HINTS: The description may include location hints (e.g., "top-left area", "center", "bottom-right", "on desktop", "in browser window", etc.). USE THESE HINTS to narrow down your search area and locate the element more accurately.
+- If description says "top-left" or "top-left area", focus on coordinates around x < 0.3, y < 0.3
+- If description says "top-right" or "top-right area", focus on coordinates around x > 0.7, y < 0.3
+- If description says "center" or "middle", focus on coordinates around x ≈ 0.5, y ≈ 0.5
+- If description says "bottom" or "bottom area", focus on coordinates around y > 0.7
+- If description mentions "on desktop", look in the desktop area (usually top portion)
+- If description mentions "in browser window" or "in application", look inside the application window boundaries
 
-Task:
-From the provided image and the following description, identify the precise center position of the element on the image. Return ONLY a JSON object in the following format:
+EXAMPLES OF VALID RESPONSE:
+{"x": 0.12, "y": 0.82}
 
-{
-  "x": value_between_0_and_1,
-  "y": value_between_0_and_1
-}
+EXAMPLES OF INVALID RESPONSES (DO NOT DO THIS):
+NO {"x": 983, "y": 20}         // Wrong: pixel values
+NO {"x": 50, "y": 50}          // Wrong: integer values
+NO {"x": 1.08, "y": -0.02}     // Wrong: outside [0.0, 1.0]
+NO {"x": 0.5%, "y": 0.5%}      // Wrong: percentage symbol
+NO {"x": 0.5, "y": 0.5}\nExplanation: ...  // Wrong: any extra text
 
-Element description: "${description}"
+MANDATORY: Only output a single, valid JSON object. Do not include any other output (reasoning, text, markdown, explanation, etc.)
 
-CRITICAL RULES:
-1. x MUST be between 0.0 and 1.0 (OBLIGATORY - system will fail if not)
-2. y MUST be between 0.0 and 1.0 (OBLIGATORY - system will fail if not)
-3. Return ONLY the JSON object, nothing else
-4. No text before or after the JSON
-5. No explanations, no thinking, no markdown
-6. Only the JSON object: {"x": 0.5, "y": 0.5}
-
-Example of correct response:
-{"x": 0.125, "y": 0.15}
-
-Examples of INCORRECT responses (DO NOT DO THIS):
-NO {"x": 640, "y": 480}  // Wrong: pixel coordinates
-NO {"x": 50, "y": 50}    // Wrong: outside 0-1 range
-NO {"x": 0.5%, "y": 0.5%} // Wrong: percentages
-YES {"x": 0.5, "y": 0.5}  // Correct: normalized 0-1
-
-Remember: The system CANNOT work if coordinates are not between 0 and 1. This is OBLIGATORY.`;
+REMEMBER: IF EITHER COORDINATE IS OUTSIDE [0.0, 1.0], CANCEL YOUR ANSWER AND TRY AGAIN.`;
 
     let lastError: Error | null = null;
 
@@ -667,8 +667,10 @@ AVAILABLE ACTIONS
 You can perform these actions:
 
 1. **click** - Click on an element
-   - Requires: "description" (clear description of what to find, e.g., "Firefox icon", "search bar", "Submit button")
-   - Example: {"action": "click", "description": "Firefox icon"}
+   - Requires: "description" (clear description with location context)
+   - ⚠️ **CRITICAL**: Include location details in your description (e.g., "Firefox icon on desktop, top-left area", "search bar in browser window, top center", "Submit button at bottom of form")
+   - Location hints: mention the area (top-left, top-right, center, bottom, etc.), the container (desktop, browser window, dialog, etc.), or relative position
+   - Example: {"action": "click", "description": "Firefox browser icon on desktop, top-left area"}
 
         2. **type** - Type text at the current cursor position
            - ⚠️ **IMPORTANT**: You MUST click on the target field FIRST before using this action. Text can only be typed into focused fields.
@@ -707,11 +709,12 @@ RESPONSE FORMAT
 
         **IMPORTANT**: 
         - Always provide "description" when action is "click"
+        - ⚠️ **CRITICAL FOR CLICK DESCRIPTIONS**: Always include location context (area, container, position). Example: "Firefox icon on desktop, top-left" not just "Firefox icon"
         - Always provide "text" when action is "type"
         - ⚠️ **CRITICAL FOR TYPING**: Before using "type" action, you MUST first use "click" action on the target field to focus it. Never skip this step.
         - Always provide "key" when action is "press_key" (e.g., "Enter" for search bars, "Tab" to navigate, "Escape" to cancel)
         - Only use "done" when the task is COMPLETELY finished
-        - Be very specific in descriptions (e.g., "Firefox browser icon on desktop" not just "icon")
+        - Be very specific in descriptions with location context (e.g., "Firefox browser icon on desktop, top-left area" not just "icon" or "Firefox icon")
 
 Remember: **accuracy over speed, clarity over cleverness**. Think before each move, analyze the screenshot carefully, and always verify the result before continuing.`;
   }
