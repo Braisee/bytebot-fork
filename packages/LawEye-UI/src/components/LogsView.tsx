@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { TaskEvent } from '@/hooks/useWebSocket';
 import { cn } from '@/utils/cn';
 
@@ -10,6 +10,47 @@ interface LogsViewProps {
 }
 
 export function LogsView({ events, className }: LogsViewProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
+  const prevEventsLengthRef = useRef(events.length);
+
+  // Check if user is near the bottom of the scroll
+  const isNearBottom = () => {
+    const container = scrollContainerRef.current;
+    if (!container) return true;
+
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    const threshold = 100; // Consider "near bottom" if within 100px
+    return scrollHeight - scrollTop - clientHeight < threshold;
+  };
+
+  // Auto-scroll to bottom when new events arrive (if auto-scroll is enabled)
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    // Check if new events were added
+    const hasNewEvents = events.length > prevEventsLengthRef.current;
+    prevEventsLengthRef.current = events.length;
+
+    if (hasNewEvents && autoScroll) {
+      // Small delay to ensure DOM is updated
+      setTimeout(() => {
+        container.scrollTop = container.scrollHeight;
+      }, 0);
+    }
+  }, [events, autoScroll]);
+
+  // Handle scroll events to enable/disable auto-scroll
+  const handleScroll = () => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    // Enable auto-scroll if user scrolls to bottom
+    // Disable if user scrolls up
+    const nearBottom = isNearBottom();
+    setAutoScroll(nearBottom);
+  };
   const getEventStyles = (type: TaskEvent['type']) => {
     switch (type) {
       case 'error':
@@ -147,7 +188,11 @@ export function LogsView({ events, className }: LogsViewProps) {
           </div>
         </div>
       </div>
-      <div className="hide-scrollbar flex-1 overflow-y-auto bg-bytebot-bronze-light-1 p-4">
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="hide-scrollbar flex-1 overflow-y-auto bg-bytebot-bronze-light-1 p-4"
+      >
         {events.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center">
             <div className="rounded-full bg-bytebot-bronze-light-3 p-4">

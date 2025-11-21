@@ -81,12 +81,29 @@ Be specific in your descriptions and ALWAYS include location context for click a
 - Instead of "icon", say "Firefox icon on desktop, top-left area" or "Folder icon in file manager, left sidebar"
 - Include location details: area (top-left, center, bottom-right, etc.), container (desktop, browser window, dialog, menu, etc.), or relative position
 
-Examples of good descriptions with location:
-- "Firefox browser icon on desktop, top-left area"
-- "Search bar in browser window, top center, below address bar"
-- "Submit button at bottom of login form, right side"
-- "Close button (X) in top-right corner of dialog window"
-- "File menu item in application menu bar, top-left"
+⚠️ **CRITICAL FOR ELEMENTS WITH TEXT**: If the element has visible text on it (button, link, menu item, etc.), you MUST include the EXACT text as it appears on screen in your description, and put the text between double quotes "". DO NOT translate, paraphrase, or modify the text - use it exactly as it appears. The quotes make it crystal clear to the Position LLM which exact text to search for using OCR.
+
+Examples of good descriptions with location and exact text (with quotes):
+- "Firefox browser icon on desktop, top-left area" (icon without text)
+- "button with text \"Submit\" at bottom of login form, right side" (if button text is "Submit")
+- "button with text \"OK\" in dialog, bottom-right" (if button text is "OK")
+- "link with text \"Login\" in top menu, right side" (if link text is "Login")
+- "menu item with text \"File\" in application menu bar, top-left" (if menu text is "File")
+- "button with text \"Cancel\" in dialog, bottom-left" (if button text is "Cancel")
+- "Search bar in browser window, top center, below address bar" (field without text)
+- "Close button (X) in top-right corner of dialog window" (icon button)
+
+Alternative format (also acceptable):
+- "\"Submit\" button at bottom of login form, right side"
+- "\"OK\" button in dialog, bottom-right"
+- "\"Login\" link in top menu, right side"
+
+Examples of BAD descriptions (DO NOT DO THIS):
+- "Submit button at bottom of form" when button shows "Submit" ❌ (text not in quotes - too ambiguous)
+- "Soumettre button" when button shows "Submit" ❌ (don't translate)
+- "Connexion link" when link shows "Login" ❌ (don't translate)
+- "Fichier menu" when menu shows "File" ❌ (don't translate)
+- "button" ❌ (too vague, no location, no text)
 
 Available keys for press_key: Enter, Tab, Escape, Space, Backspace, Delete, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Home, End, PageUp, PageDown, F1-F12, etc.`;
 
@@ -670,7 +687,15 @@ You can perform these actions:
    - Requires: "description" (clear description with location context)
    - ⚠️ **CRITICAL**: Include location details in your description (e.g., "Firefox icon on desktop, top-left area", "search bar in browser window, top center", "Submit button at bottom of form")
    - Location hints: mention the area (top-left, top-right, center, bottom, etc.), the container (desktop, browser window, dialog, etc.), or relative position
-   - Example: {"action": "click", "description": "Firefox browser icon on desktop, top-left area"}
+   - ⚠️ **TEXT EXTRACTION FOR OCR**: If you need to click on a button, link, menu item, or any element that has visible text written on it, you MUST include the exact text as it appears on screen in your description, and put the text between double quotes "". DO NOT translate or paraphrase the text - use the exact text visible on the element. The quotes help the Position LLM use OCR to find the element precisely by matching the exact text.
+   - Examples:
+     - Button with text "Submit" → description: "button with text \"Submit\" at bottom of form" or "\"Submit\" button at bottom of form"
+     - Button with text "OK" → description: "button with text \"OK\" in dialog, bottom-right" or "\"OK\" button in dialog"
+     - Link with text "Login" → description: "link with text \"Login\" in top menu, right side" or "\"Login\" link in top menu"
+     - Menu item with text "File" → description: "menu item with text \"File\" in menu bar, top-left" or "\"File\" menu item"
+     - Button with text "Cancel" → description: "button with text \"Cancel\" in dialog, bottom-left"
+     - Icon without text (e.g., Firefox icon) → description: "Firefox browser icon on desktop, top-left area"
+   - Example: {"action": "click", "description": "button with text \"Submit\" at bottom of login form, right side"}
 
         2. **type** - Type text at the current cursor position
            - ⚠️ **IMPORTANT**: You MUST click on the target field FIRST before using this action. Text can only be typed into focused fields.
@@ -709,7 +734,13 @@ RESPONSE FORMAT
 
         **IMPORTANT**: 
         - Always provide "description" when action is "click"
-        - ⚠️ **CRITICAL FOR CLICK DESCRIPTIONS**: Always include location context (area, container, position). Example: "Firefox icon on desktop, top-left" not just "Firefox icon"
+        - ⚠️ **CRITICAL FOR CLICK DESCRIPTIONS**: 
+          * Always include location context (area, container, position). Example: "Firefox icon on desktop, top-left" not just "Firefox icon"
+          * **FOR ELEMENTS WITH VISIBLE TEXT**: If the element has text written on it (button, link, menu item, label, etc.), you MUST include the exact text as it appears on screen and put it between double quotes "". DO NOT translate or paraphrase - use the exact text. The quotes are essential for OCR-based detection. Examples:
+            - Button showing "Submit" → use "button with text \"Submit\" at bottom of form" or "\"Submit\" button at bottom of form" (NOT "Submit button" or "Soumettre button")
+            - Link showing "Login" → use "link with text \"Login\" in top menu" or "\"Login\" link in top menu" (NOT "Login link" or "Connexion link")  
+            - Menu item showing "File" → use "menu item with text \"File\"" or "\"File\" menu item" (NOT "File menu item" or "Fichier menu")
+            - The quotes around the text make it unambiguous for the Position LLM to find the exact text via OCR
         - Always provide "text" when action is "type"
         - ⚠️ **CRITICAL FOR TYPING**: Before using "type" action, you MUST first use "click" action on the target field to focus it. Never skip this step.
         - Always provide "key" when action is "press_key" (e.g., "Enter" for search bars, "Tab" to navigate, "Escape" to cancel)

@@ -169,104 +169,104 @@ export default function Home() {
       </header>
 
       {/* Main Content */}
-      <main className="mx-auto flex w-full max-w-[1920px] flex-1 flex-col gap-6 overflow-hidden p-6">
-        {/* Task Input Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Nouvelle tâche</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <TaskInput
-              onTaskCreated={handleTaskCreated}
-              disabled={currentTask?.status === 'running' || currentTask?.status === 'pending'}
-            />
-            {currentTask && (
-              <div className="mt-4 rounded-lg border border-bytebot-bronze-light-7 bg-bytebot-bronze-light-1 p-4">
-                <div className="flex items-start gap-3">
-                  <div className="mt-0.5 shrink-0">
-                    <svg
-                      className="h-5 w-5 text-bytebot-bronze-light-9"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                      />
-                    </svg>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium text-bytebot-bronze-light-12">
-                        Tâche actuelle
-                      </p>
-                      <div className="flex items-center gap-2">
-                        {currentTask.status === 'running' && (
-                          <button
-                            onClick={async () => {
-                              if (
-                                currentTaskId &&
-                                confirm(
-                                  'Êtes-vous sûr de vouloir annuler cette tâche ?',
-                                )
-                              ) {
-                                try {
-                                  await cancelTask(currentTaskId);
-                                  handleResetTask();
-                                } catch (error: any) {
-                                  console.error('Error cancelling task:', error);
-                                  alert(
-                                    error.message ||
-                                      'Erreur lors de l\'annulation de la tâche',
-                                  );
-                                }
-                              }
-                            }}
-                            className="rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-                          >
-                            Annuler
-                          </button>
-                        )}
-                        {(currentTask.status === 'completed' ||
-                          currentTask.status === 'failed' ||
-                          currentTask.status === 'cancelled') && (
-                          <button
-                            onClick={handleResetTask}
-                            className="rounded-md border border-bytebot-bronze-light-7 bg-bytebot-bronze-light-3 px-3 py-1.5 text-xs font-medium text-bytebot-bronze-light-11 hover:bg-bytebot-bronze-light-4 focus:outline-none focus:ring-2 focus:ring-bytebot-bronze-light-7 focus:ring-offset-2"
-                            title="Nouvelle tâche"
-                          >
-                            Nouvelle tâche
-                          </button>
-                        )}
-                      </div>
+      <main className="mx-auto flex w-full max-w-[1920px] flex-1 gap-6 overflow-hidden p-6">
+        {/* Left Column: Task Input and Desktop View */}
+        <div className="flex flex-1 flex-col gap-6 overflow-hidden">
+          {/* Task Input Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Nouvelle tâche</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TaskInput
+                onTaskCreated={handleTaskCreated}
+                disabled={currentTask?.status === 'running' || currentTask?.status === 'pending'}
+              />
+              {currentTask && (
+                <div className="mt-4 rounded-lg border border-bytebot-bronze-light-7 bg-bytebot-bronze-light-1 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 shrink-0">
+                      <svg
+                        className="h-5 w-5 text-bytebot-bronze-light-9"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                        />
+                      </svg>
                     </div>
-                    <p className="mt-1 text-sm text-bytebot-bronze-light-11">
-                      {currentTask.description}
-                    </p>
-                    {currentTask.error && (
-                      <p className="mt-2 text-xs text-red-600">
-                        {currentTask.error}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-bytebot-bronze-light-12">
+                          Tâche actuelle
+                        </p>
+                        <div className="flex items-center gap-2">
+                          {currentTask.status === 'running' && (
+                            <button
+                              onClick={async () => {
+                                if (
+                                  currentTaskId &&
+                                  confirm(
+                                    'Êtes-vous sûr de vouloir annuler cette tâche ?',
+                                  )
+                                ) {
+                                  try {
+                                    await cancelTask(currentTaskId);
+                                    handleResetTask();
+                                  } catch (error: any) {
+                                    console.error('Error cancelling task:', error);
+                                    alert(
+                                      error.message ||
+                                        'Erreur lors de l\'annulation de la tâche',
+                                    );
+                                  }
+                                }
+                              }}
+                              className="rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                            >
+                              Annuler
+                            </button>
+                          )}
+                          {(currentTask.status === 'completed' ||
+                            currentTask.status === 'failed' ||
+                            currentTask.status === 'cancelled') && (
+                            <button
+                              onClick={handleResetTask}
+                              className="rounded-md border border-bytebot-bronze-light-7 bg-bytebot-bronze-light-3 px-3 py-1.5 text-xs font-medium text-bytebot-bronze-light-11 hover:bg-bytebot-bronze-light-4 focus:outline-none focus:ring-2 focus:ring-bytebot-bronze-light-7 focus:ring-offset-2"
+                              title="Nouvelle tâche"
+                            >
+                              Nouvelle tâche
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <p className="mt-1 text-sm text-bytebot-bronze-light-11">
+                        {currentTask.description}
                       </p>
-                    )}
-                    {currentTask.status === 'completed' && (
-                      <p className="mt-2 text-xs text-green-600 font-medium">
-                        ✓ Tâche terminée avec succès
-                      </p>
-                    )}
+                      {currentTask.error && (
+                        <p className="mt-2 text-xs text-red-600">
+                          {currentTask.error}
+                        </p>
+                      )}
+                      {currentTask.status === 'completed' && (
+                        <p className="mt-2 text-xs text-green-600 font-medium">
+                          ✓ Tâche terminée avec succès
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              )}
+            </CardContent>
+          </Card>
 
-        {/* Desktop and Logs Grid */}
-        <div className="grid flex-1 grid-cols-2 gap-6 overflow-hidden">
           {/* Desktop View Card */}
-          <Card className="flex flex-col overflow-hidden">
+          <Card className="flex flex-1 flex-col overflow-hidden">
             <CardHeader className="shrink-0 pb-4">
               <CardTitle>Vue Desktop</CardTitle>
             </CardHeader>
@@ -276,9 +276,11 @@ export default function Home() {
               </div>
             </CardContent>
           </Card>
+        </div>
 
-          {/* Logs View Card */}
-          <Card className="flex flex-col overflow-hidden">
+        {/* Right Column: Logs View - takes full height */}
+        <div className="w-1/2 flex-shrink-0">
+          <Card className="flex h-full flex-col overflow-hidden">
             <LogsView events={events} />
           </Card>
         </div>
