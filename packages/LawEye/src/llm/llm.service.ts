@@ -294,7 +294,7 @@ REMEMBER: IF EITHER COORDINATE IS OUTSIDE [0.0, 1.0], CANCEL YOUR ANSWER AND TRY
             this.openai.chat.completions.create({
               model: this.positionModel,
               messages,
-              max_tokens: 200,
+              max_tokens: 20000,
               temperature: 0.1, // Very low temperature for precise results
               // LM Studio doesn't support 'json_object', use 'text' and parse JSON from response
             }),

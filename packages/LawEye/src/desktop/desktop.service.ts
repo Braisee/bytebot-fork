@@ -5,6 +5,7 @@ import {
   ClickMouseAction,
   TypeTextAction,
   TypeKeysAction,
+  PasteTextAction,
 } from '@bytebot/shared';
 
 @Injectable()
@@ -142,22 +143,57 @@ export class DesktopService {
   }
 
   /**
+   * Check if text contains accented characters
+   * @param text - The text to check
+   * @returns True if text contains accented characters
+   */
+  private hasAccents(text: string): boolean {
+    // Normalize to NFD and check if any combining diacritical marks remain
+    const normalized = text.normalize('NFD');
+    return /[\u0300-\u036f]/.test(normalized);
+  }
+
+  /**
    * Type text at the current cursor position
+   * If text contains accented characters, uses paste_text (copy-paste) instead of type_text
+   * because type_text doesn't support accented characters in keyboard mapping.
+   * paste_text uses xclip + Ctrl+V which preserves accents correctly.
    * @param text - The text to type
-   * @param delay - Optional delay between keystrokes in milliseconds
+   * @param delay - Optional delay between keystrokes in milliseconds (only used for type_text)
    */
   async typeText(text: string, delay?: number): Promise<void> {
-    this.logger.debug(
-      `Typing text (${text.length} chars): "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`,
-    );
+    const hasAccentedChars = this.hasAccents(text);
+    const method = hasAccentedChars ? 'paste_text' : 'type_text';
+    
+    if (hasAccentedChars) {
+      this.logger.debug(
+        `Text contains accents, using paste_text instead of type_text: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`,
+      );
+    } else {
+      this.logger.debug(
+        `Typing text (${text.length} chars): "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`,
+      );
+    }
+
     const startTime = Date.now();
 
     try {
-      const action: TypeTextAction = {
-        action: 'type_text',
-        text,
-        delay,
-      };
+      let action: TypeTextAction | PasteTextAction;
+      
+      if (hasAccentedChars) {
+        // Use paste_text for accented characters
+        action = {
+          action: 'paste_text',
+          text,
+        };
+      } else {
+        // Use type_text for non-accented characters
+        action = {
+          action: 'type_text',
+          text,
+          delay,
+        };
+      }
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
@@ -172,16 +208,39 @@ export class DesktopService {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error(`Failed to type text: ${response.statusText}`);
+        // Try to read error message from response body
+        let errorMessage = `Failed to ${method}: ${response.statusText}`;
+        try {
+          const errorBody = await response.text();
+          if (errorBody) {
+            try {
+              const errorJson = JSON.parse(errorBody);
+              errorMessage = errorJson.message || errorJson.error || errorMessage;
+            } catch {
+              // If not JSON, use the text as error message
+              errorMessage = errorBody.length > 200 
+                ? `${errorBody.substring(0, 200)}...` 
+                : errorBody;
+            }
+          }
+        } catch (readError) {
+          // If we can't read the body, use the status text
+          this.logger.warn(`Could not read error response body: ${readError}`);
+        }
+        
+        this.logger.error(
+          `${method} failed: ${errorMessage}. Text was: "${text.substring(0, 100)}${text.length > 100 ? '...' : ''}" (${text.length} chars)`,
+        );
+        throw new Error(errorMessage);
       }
 
       const duration = Date.now() - startTime;
-      this.logger.debug(`Text typed successfully in ${duration}ms`);
+      this.logger.debug(`Text ${hasAccentedChars ? 'pasted' : 'typed'} successfully in ${duration}ms`);
     } catch (error: any) {
       const duration = Date.now() - startTime;
       if (error.name === 'AbortError') {
-        this.logger.error(`Type text request timed out after ${duration}ms`);
-        throw new Error('Type text request timed out after 15s');
+        this.logger.error(`${method} request timed out after ${duration}ms`);
+        throw new Error(`${method} request timed out after 15s`);
       }
       if (error.code === 'ECONNREFUSED' || error.message?.includes('fetch')) {
         this.logger.error(`Failed to connect to bytebot-desktop at ${this.baseUrl}`);
@@ -189,7 +248,7 @@ export class DesktopService {
           `Failed to connect to bytebot-desktop: ${error.message}. Make sure bytebot-desktop is running.`,
         );
       }
-      this.logger.error(`Error typing text after ${duration}ms: ${error.message}`, error.stack);
+      this.logger.error(`Error ${hasAccentedChars ? 'pasting' : 'typing'} text after ${duration}ms: ${error.message}`, error.stack);
       throw error;
     }
   }
